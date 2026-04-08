@@ -1,13 +1,19 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { saveStats } from '../api'
+import { getUserId, getUserName } from '../game/userCache'
 
 /**
  * GameOverOverlay — Displays game results with stats and action buttons.
- * Shows "Next Level" button when the level is won and a next level exists.
- * Automatically saves stats to the backend on mount.
+ * Shows "Next Level" or "🏆 Finish" button when the level is won.
+ * Automatically saves enriched stats to the backend on mount (once).
  */
-function GameOverOverlay({ isWin, deaths, time, score, level, onRestart, onMenu, onNextLevel }) {
-  const [saved, setSaved] = useState(false)
+function GameOverOverlay({
+  isWin, deaths, time, score, level,
+  totalJumps, maxXReached, scoreResets, checkpointEvents,
+  onRestart, onMenu, onNextLevel, isLastLevel,
+  onSessionSaved
+}) {
+  const hasSaved = useRef(false)
 
   // Format time as MM:SS
   const formatTime = (seconds) => {
@@ -16,19 +22,30 @@ function GameOverOverlay({ isWin, deaths, time, score, level, onRestart, onMenu,
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
-  // Save stats to backend on mount
+  // Save stats to backend on mount (once)
   useEffect(() => {
+    if (hasSaved.current) return
+    hasSaved.current = true
+
     const data = {
-      player_name: 'Player',
+      player_uuid: getUserId(),
       level,
       deaths,
-      time_seconds: Math.round(time),
-      score: Math.max(0, score)
+      time_seconds: parseFloat(time.toFixed(2)),
+      score: Math.max(0, score),
+      total_jumps: totalJumps || 0,
+      max_x_reached: parseFloat((maxXReached || 0).toFixed(2)),
+      score_resets: scoreResets || 0,
+      completed: isWin,
+      checkpoint_events: checkpointEvents || []
     }
+
     saveStats(data).then((result) => {
-      if (result) setSaved(true)
+      if (result && onSessionSaved) {
+        onSessionSaved(result.id)
+      }
     })
-  }, [deaths, time, score, level])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="game-over-overlay">
@@ -57,14 +74,13 @@ function GameOverOverlay({ isWin, deaths, time, score, level, onRestart, onMenu,
         </div>
 
         <div className="game-over-buttons">
-          {/* Next Level button — only shown on win with a next level available */}
           {isWin && onNextLevel && (
             <button
               id="btn-next-level"
               className="btn btn-primary"
               onClick={onNextLevel}
             >
-              ➡️ Next Level
+              {isLastLevel ? '🏆 Finish' : '➡️ Next Level'}
             </button>
           )}
 
@@ -84,12 +100,6 @@ function GameOverOverlay({ isWin, deaths, time, score, level, onRestart, onMenu,
             🏠 Menu
           </button>
         </div>
-
-        {saved && (
-          <p style={{ marginTop: '1rem', fontSize: '0.75rem', color: '#00e676' }}>
-            ✓ Stats saved to server
-          </p>
-        )}
       </div>
     </div>
   )

@@ -2,14 +2,25 @@ import { useNavigate } from 'react-router-dom'
 import { getUnlockedLevel } from '../game/levelProgress'
 
 /**
- * LevelSelect — Grid of 3 levels with progressive unlock system.
- * Locked levels are grayed out and not clickable.
+ * LevelSelect — Grid of 7 levels with progressive unlock system.
+ * Each level card shows its theme-based border color.
  */
 const LEVELS = [
-  { id: 1, name: 'The Innocent Path', emoji: '🌱' },
-  { id: 2, name: 'Deceptive Forest', emoji: '🌲' },
-  { id: 3, name: 'Chaos Castle', emoji: '🏰' }
+  { id: 1, name: 'Level 1', theme: 'blue' },
+  { id: 2, name: 'Level 2', theme: 'blue' },
+  { id: 3, name: 'Level 3', theme: 'green' },
+  { id: 4, name: 'Level 4', theme: 'green' },
+  { id: 5, name: 'Level 5', theme: 'red' },
+  { id: 6, name: 'Level 6', theme: 'purple' },
+  { id: 7, name: 'Level 7', theme: 'purple' },
 ]
+
+const THEME_EMOJIS = {
+  blue: '🌙',
+  green: '🌲',
+  red: '🔥',
+  purple: '🔮',
+}
 
 function LevelSelect() {
   const navigate = useNavigate()
@@ -31,12 +42,12 @@ function LevelSelect() {
           return (
             <div
               key={level.id}
-              className={`level-card glass-panel ${!isUnlocked ? 'locked' : ''}`}
+              className={`level-card glass-panel theme-${level.theme} ${!isUnlocked ? 'locked' : ''}`}
               onClick={() => handleLevelClick(level.id)}
             >
               {isUnlocked ? (
                 <>
-                  <div className="level-number">{level.emoji}</div>
+                  <div className="level-emoji">{THEME_EMOJIS[level.theme]}</div>
                   <div className="level-number">{level.id}</div>
                   <div className="level-name">{level.name}</div>
                 </>

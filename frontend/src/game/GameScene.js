@@ -1,8 +1,9 @@
 /**
- * GameScene.js — Main Phaser game scene.
+ * GameScene.js — Main Phaser game scene for Good Game.
  *
  * Handles: player movement, level building, trap activation,
- * death/respawn, HUD (deaths, timer, score), camera, and win condition.
+ * death/respawn, HUD (deaths, timer, score), camera, win condition,
+ * enriched data tracking (jumps, checkpoints, score resets).
  *
  * This is a factory function that creates a scene class with callbacks
  * to communicate with the React wrapper (GameContainer).
@@ -13,9 +14,43 @@ import { levels } from './levels'
 import { createTrap } from './traps'
 
 /**
+ * Theme color lookup for backgrounds and platforms.
+ */
+const THEME_COLORS = {
+  blue: {
+    skyTop: 0x0a0a2e, skyBottom: 0x1a1a4e,
+    starTint: 0xffffff,
+    mountainFill: 0x151540,
+    groundFill: 0x3a3a5e, groundGrass: 0x4caf50, groundGrid: 0x2a2a4e,
+    floatFill: 0x5a5a8a, floatTop: 0x7b7bbb, floatStroke: 0x4a4a6a,
+  },
+  green: {
+    skyTop: 0x0a1a0a, skyBottom: 0x1a3a1a,
+    starTint: 0xccffcc,
+    mountainFill: 0x152015,
+    groundFill: 0x3a4a3a, groundGrass: 0x66bb6a, groundGrid: 0x2a3a2a,
+    floatFill: 0x5a7a5a, floatTop: 0x81c784, floatStroke: 0x4a6a4a,
+  },
+  red: {
+    skyTop: 0x1a0a0a, skyBottom: 0x3a1a1a,
+    starTint: 0xffcccc,
+    mountainFill: 0x2a1010,
+    groundFill: 0x4a2a2a, groundGrass: 0xf44336, groundGrid: 0x3a1a1a,
+    floatFill: 0x7a4a4a, floatTop: 0xe57373, floatStroke: 0x6a3a3a,
+  },
+  purple: {
+    skyTop: 0x0f0a1e, skyBottom: 0x2a1a3e,
+    starTint: 0xeeccff,
+    mountainFill: 0x1a1030,
+    groundFill: 0x3a2a4e, groundGrass: 0xab47bc, groundGrid: 0x2a1a3e,
+    floatFill: 0x6a5a8a, floatTop: 0xce93d8, floatStroke: 0x5a4a7a,
+  },
+}
+
+/**
  * Creates a Phaser Scene class configured for a specific level.
- * @param {number} levelId — which level to load (1, 2, or 3)
- * @param {Object} callbacks — { onDeath, onTimeUpdate, onGameOver }
+ * @param {number} levelId — which level to load (1-7)
+ * @param {Object} callbacks — { onDeath, onTimeUpdate, onGameOver, onPause }
  * @returns {Phaser.Scene} scene class
  */
 export function createGameScene(levelId, callbacks) {
@@ -31,8 +66,11 @@ export function createGameScene(levelId, callbacks) {
     // ==========================================
     init() {
       this.levelData = levels[levelId] || levels[1]
+      this.theme = this.levelData.theme || 'blue'
+      this.colors = THEME_COLORS[this.theme] || THEME_COLORS.blue
       this.deaths = 0
       this.elapsedTime = 0
+      this.scoreTimeOffset = 0 // For score reset feature
       this.score = 0
       this.isAlive = true
       this.isFinished = false
@@ -40,7 +78,14 @@ export function createGameScene(levelId, callbacks) {
         x: this.levelData.playerStart.x,
         y: this.levelData.playerStart.y
       }
+      this.currentCheckpointIndex = -1
       this.traps = []
+
+      // Enriched tracking
+      this.totalJumps = 0
+      this.maxXReached = 0
+      this.scoreResets = 0
+      this.checkpointEvents = []
     }
 
     // ==========================================
@@ -59,7 +104,7 @@ export function createGameScene(levelId, callbacks) {
       this.platformGroup = this.physics.add.staticGroup()
       this.buildPlatforms()
 
-      // -- Build traps --
+      // -- Build traps (with theme) --
       this.buildTraps()
 
       // -- Create player --
@@ -70,6 +115,15 @@ export function createGameScene(levelId, callbacks) {
 
       // -- Build checkpoints --
       this.createCheckpoints()
+
+      // -- Create death particle texture ONCE --
+      if (!this.textures.exists('deathParticle')) {
+        const pg = this.add.graphics()
+        pg.fillStyle(0x00bcd4, 1)
+        pg.fillCircle(4, 4, 4)
+        pg.generateTexture('deathParticle', 8, 8)
+        pg.destroy()
+      }
 
       // -- Camera --
       this.cameras.main.setBounds(0, 0, worldWidth, 500)
@@ -97,25 +151,20 @@ export function createGameScene(levelId, callbacks) {
       this.physics.add.collider(this.player, this.platformGroup)
 
       // Collider with trap bodies
-      this.trapBodies = []
       this.traps.forEach(trap => {
         if (trap.type === 'fakeFloor') {
-          // Fake floor: collide, then trigger collapse
           this.physics.add.collider(this.player, trap.body, () => {
             trap.trigger(this.player)
           })
         } else if (trap.type === 'fallingBlock' || trap.type === 'fallingCeiling') {
-          // Deadly falling objects
           this.physics.add.overlap(this.player, trap.body, () => {
             if (trap.body.alpha > 0) this.killPlayer()
           })
         } else if (trap.type === 'surpriseSpike') {
-          // Deadly spike
           this.physics.add.overlap(this.player, trap.body, () => {
             if (trap.body.alpha > 0) this.killPlayer()
           })
         } else if (trap.type === 'springLauncher') {
-          // Spring: overlap launches player
           this.physics.add.overlap(this.player, trap.body, () => {
             if (trap.body.alpha > 0) trap.launchPlayer(this.player)
           })
@@ -124,9 +173,6 @@ export function createGameScene(levelId, callbacks) {
 
       // -- HUD (fixed to camera) --
       this.createHUD()
-
-      // -- Kill zone (void at bottom) --
-      // If player falls below the screen, they die
     }
 
     // ==========================================
@@ -139,6 +185,11 @@ export function createGameScene(levelId, callbacks) {
       this.elapsedTime += delta / 1000
       onTimeUpdate(this.elapsedTime)
       this.updateHUD()
+
+      // -- Track max X --
+      if (this.player.x > this.maxXReached) {
+        this.maxXReached = this.player.x
+      }
 
       // -- Player movement --
       const onGround = this.player.body.blocked.down || this.player.body.touching.down
@@ -158,6 +209,7 @@ export function createGameScene(levelId, callbacks) {
       if (onGround &&
         (this.cursors.up.isDown || this.wasd.up.isDown || this.spaceKey.isDown)) {
         this.player.setVelocityY(jumpVelocity)
+        this.totalJumps++
       }
 
       // -- Check trap triggers (position-based) --
@@ -178,12 +230,14 @@ export function createGameScene(levelId, callbacks) {
     // ==========================================
 
     /**
-     * Draw a simple parallax background.
+     * Draw themed parallax background.
      */
     createBackground(worldWidth) {
+      const c = this.colors
+
       // Sky gradient
       const bg = this.add.graphics()
-      bg.fillGradientStyle(0x0a0a2e, 0x0a0a2e, 0x1a1a4e, 0x1a1a4e)
+      bg.fillGradientStyle(c.skyTop, c.skyTop, c.skyBottom, c.skyBottom)
       bg.fillRect(0, 0, worldWidth, 500)
 
       // Stars
@@ -191,13 +245,13 @@ export function createGameScene(levelId, callbacks) {
         const x = Phaser.Math.Between(0, worldWidth)
         const y = Phaser.Math.Between(0, 300)
         const size = Phaser.Math.Between(1, 3)
-        bg.fillStyle(0xffffff, Phaser.Math.FloatBetween(0.3, 0.8))
+        bg.fillStyle(c.starTint, Phaser.Math.FloatBetween(0.3, 0.8))
         bg.fillCircle(x, y, size)
       }
 
       // Distant mountains
       const mountains = this.add.graphics()
-      mountains.fillStyle(0x151540, 0.6)
+      mountains.fillStyle(c.mountainFill, 0.6)
       mountains.beginPath()
       mountains.moveTo(0, 500)
       for (let x = 0; x <= worldWidth; x += 200) {
@@ -210,22 +264,21 @@ export function createGameScene(levelId, callbacks) {
     }
 
     /**
-     * Build solid platforms from level data.
+     * Build solid platforms from level data using theme colors.
      */
     buildPlatforms() {
+      const c = this.colors
+
       this.levelData.platforms.forEach(p => {
-        // Create platform texture
         const g = this.add.graphics()
 
         if (p.height > 20) {
-          // Ground block — darker, textured
-          g.fillStyle(0x3a3a5e, 1)
+          // Ground block — themed
+          g.fillStyle(c.groundFill, 1)
           g.fillRect(0, 0, p.width, p.height)
-          // Top grass stripe
-          g.fillStyle(0x4caf50, 1)
+          g.fillStyle(c.groundGrass, 1)
           g.fillRect(0, 0, p.width, 6)
-          // Grid lines for texture
-          g.lineStyle(1, 0x2a2a4e, 0.5)
+          g.lineStyle(1, c.groundGrid, 0.5)
           for (let x = 0; x < p.width; x += 20) {
             g.lineBetween(x, 6, x, p.height)
           }
@@ -233,12 +286,12 @@ export function createGameScene(levelId, callbacks) {
             g.lineBetween(0, y, p.width, y)
           }
         } else {
-          // Floating platform — sleek
-          g.fillStyle(0x5a5a8a, 1)
+          // Floating platform — themed
+          g.fillStyle(c.floatFill, 1)
           g.fillRect(0, 0, p.width, p.height)
-          g.fillStyle(0x7b7bbb, 1)
+          g.fillStyle(c.floatTop, 1)
           g.fillRect(0, 0, p.width, 4)
-          g.lineStyle(1, 0x4a4a6a)
+          g.lineStyle(1, c.floatStroke)
           g.strokeRect(0, 0, p.width, p.height)
         }
 
@@ -254,27 +307,25 @@ export function createGameScene(levelId, callbacks) {
 
     /**
      * Build traps from level data using the trap factory.
+     * Passes theme for fake floor styling.
      */
     buildTraps() {
       this.traps = this.levelData.traps
-        .map(td => createTrap(this, td))
+        .map(td => createTrap(this, td, this.theme))
         .filter(Boolean)
     }
 
     /**
-     * Create the player character (a colored square with eyes).
+     * Create the player character.
      */
     createPlayer() {
       const pw = 28
       const ph = 36
       const { playerStart } = this.levelData
 
-      // Player body
       const g = this.add.graphics()
-      // Body
       g.fillStyle(0x00bcd4, 1)
       g.fillRoundedRect(0, 0, pw, ph, 4)
-      // Belly highlight
       g.fillStyle(0x4dd0e1, 1)
       g.fillRoundedRect(4, ph * 0.5, pw - 8, ph * 0.35, 3)
 
@@ -284,19 +335,16 @@ export function createGameScene(levelId, callbacks) {
 
       this.player = this.physics.add.sprite(playerStart.x, playerStart.y, key)
       this.player.setDisplaySize(pw, ph)
-      this.player.setCollideWorldBounds(false) // We handle death manually
+      this.player.setCollideWorldBounds(false)
       this.player.setBounce(0.1)
 
-      // Eyes (as child graphics container)
+      // Eyes
       const eyeContainer = this.add.container(0, 0)
-
       const eyeG = this.add.graphics()
-      // Left eye
       eyeG.fillStyle(0xffffff, 1)
       eyeG.fillCircle(-6, -6, 5)
       eyeG.fillStyle(0x000000, 1)
       eyeG.fillCircle(-4, -6, 2.5)
-      // Right eye
       eyeG.fillStyle(0xffffff, 1)
       eyeG.fillCircle(6, -6, 5)
       eyeG.fillStyle(0x000000, 1)
@@ -305,7 +353,6 @@ export function createGameScene(levelId, callbacks) {
       eyeContainer.add(eyeG)
       this.playerEyes = eyeContainer
 
-      // Keep eyes following player
       this.events.on('update', () => {
         if (this.player && this.player.active) {
           eyeContainer.setPosition(this.player.x, this.player.y)
@@ -320,10 +367,8 @@ export function createGameScene(levelId, callbacks) {
       const { goal } = this.levelData
       const flagG = this.add.graphics()
 
-      // Pole
       flagG.fillStyle(0xcccccc, 1)
       flagG.fillRect(0, 0, 4, 80)
-      // Flag
       flagG.fillStyle(0xffd700, 1)
       flagG.beginPath()
       flagG.moveTo(4, 0)
@@ -331,7 +376,6 @@ export function createGameScene(levelId, callbacks) {
       flagG.lineTo(4, 30)
       flagG.closePath()
       flagG.fillPath()
-      // Star on flag
       flagG.fillStyle(0xff3c7d, 1)
       flagG.fillCircle(20, 15, 6)
 
@@ -344,12 +388,10 @@ export function createGameScene(levelId, callbacks) {
       this.goalSprite.body.allowGravity = false
       this.goalSprite.setImmovable(true)
 
-      // Goal overlap
       this.physics.add.overlap(this.player, this.goalSprite, () => {
         this.winLevel()
       })
 
-      // Floating animation
       this.tweens.add({
         targets: this.goalSprite,
         y: goal.y - 8,
@@ -367,10 +409,8 @@ export function createGameScene(levelId, callbacks) {
       this.checkpointSprites = []
       this.levelData.checkpoints.forEach((cp, i) => {
         const g = this.add.graphics()
-        // Checkpoint pole
         g.fillStyle(0x888888, 1)
         g.fillRect(0, 0, 3, 40)
-        // Blue flag
         g.fillStyle(0x2196f3, 1)
         g.beginPath()
         g.moveTo(3, 0)
@@ -388,10 +428,18 @@ export function createGameScene(levelId, callbacks) {
         sprite.body.allowGravity = false
         sprite.setImmovable(true)
 
-        // Overlap: activate checkpoint
         this.physics.add.overlap(this.player, sprite, () => {
           if (this.currentCheckpoint.x < cp.x) {
             this.currentCheckpoint = { x: cp.x, y: cp.y }
+            this.currentCheckpointIndex = i
+
+            // Record checkpoint event (cumulative values)
+            this.checkpointEvents.push({
+              checkpointIndex: i,
+              reachedAtSeconds: this.elapsedTime,
+              deathsSoFar: this.deaths
+            })
+
             // Visual feedback
             sprite.setTint(0x00e676)
             this.tweens.add({
@@ -442,10 +490,11 @@ export function createGameScene(levelId, callbacks) {
       this.hudDeathText.setText(`💀 Deaths: ${this.deaths}`)
       this.hudTimeText.setText(`⏱️ ${timeStr}`)
 
-      // Calculate running score
+      // Calculate running score (−25 per death)
       const baseScore = 1000
-      const deathPenalty = this.deaths * 50
-      const timeBonus = Math.max(0, 500 - Math.floor(this.elapsedTime) * 2)
+      const deathPenalty = this.deaths * 25
+      const effectiveTime = this.elapsedTime - this.scoreTimeOffset
+      const timeBonus = Math.max(0, 500 - Math.floor(effectiveTime) * 2)
       this.score = Math.max(0, baseScore - deathPenalty + timeBonus)
       this.hudScoreText.setText(`⭐ Score: ${this.score}`)
     }
@@ -460,12 +509,44 @@ export function createGameScene(levelId, callbacks) {
 
       onDeath(this.deaths)
 
+      // Check for score reset penalty
+      const baseScore = 1000
+      const deathPenalty = this.deaths * 25
+      const effectiveTime = this.elapsedTime - this.scoreTimeOffset
+      const timeBonus = Math.max(0, 500 - Math.floor(effectiveTime) * 2)
+      const currentScore = Math.max(0, baseScore - deathPenalty + timeBonus)
+
+      if (currentScore <= 0) {
+        this.scoreResets++
+        // Reset the score accumulation by adjusting time offset
+        this.scoreTimeOffset = this.elapsedTime
+
+        // Show score reset flash
+        const resetText = this.add.text(400, 200, '⚠️ SCORE RESET!', {
+          fontFamily: '"Press Start 2P", cursive',
+          fontSize: '16px',
+          fill: '#ff4444',
+          stroke: '#000000',
+          strokeThickness: 4,
+          align: 'center'
+        }).setScrollFactor(0).setDepth(200).setOrigin(0.5)
+
+        this.tweens.add({
+          targets: resetText,
+          alpha: 0,
+          y: 170,
+          duration: 2000,
+          ease: 'Power2',
+          onComplete: () => resetText.destroy()
+        })
+      }
+
       // Death flash effect
       this.cameras.main.shake(200, 0.01)
       this.cameras.main.flash(200, 255, 50, 50)
 
-      // Death particles
-      const particles = this.add.particles(this.player.x, this.player.y, undefined, {
+      // Death particles — create, explode, then auto-destroy after lifespan
+      const particles = this.add.particles(this.player.x, this.player.y, 'deathParticle', {
         speed: { min: 50, max: 150 },
         angle: { min: 0, max: 360 },
         scale: { start: 0.6, end: 0 },
@@ -473,16 +554,9 @@ export function createGameScene(levelId, callbacks) {
         quantity: 8,
         emitting: false
       })
-
-      // Create particle texture
-      const pg = this.add.graphics()
-      pg.fillStyle(0x00bcd4, 1)
-      pg.fillCircle(4, 4, 4)
-      pg.generateTexture('deathParticle', 8, 8)
-      pg.destroy()
-
-      particles.setTexture('deathParticle')
       particles.explode(8)
+      // Destroy emitter after particles finish (prevents memory leak)
+      this.time.delayedCall(700, () => particles.destroy())
 
       // Hide player
       this.player.setAlpha(0)
@@ -529,23 +603,32 @@ export function createGameScene(levelId, callbacks) {
       // Celebration
       this.cameras.main.flash(500, 255, 215, 0)
 
-      // Final score calculation
+      // Final score calculation (−25 per death)
       const baseScore = 1000
-      const deathPenalty = this.deaths * 50
-      const timeBonus = Math.max(0, 500 - Math.floor(this.elapsedTime) * 2)
+      const deathPenalty = this.deaths * 25
+      const effectiveTime = this.elapsedTime - this.scoreTimeOffset
+      const timeBonus = Math.max(0, 500 - Math.floor(effectiveTime) * 2)
       this.score = Math.max(0, baseScore - deathPenalty + timeBonus)
 
       // Stop player
       this.player.setVelocity(0, 0)
       this.player.body.allowGravity = false
 
-      // Delay then trigger game over callback
+      // Delay then trigger game over callback with enriched data
       this.time.delayedCall(1500, () => {
         onGameOver({
           isWin: true,
           deaths: this.deaths,
           time: this.elapsedTime,
-          score: this.score
+          score: this.score,
+          totalJumps: this.totalJumps,
+          maxXReached: this.maxXReached,
+          scoreResets: this.scoreResets,
+          checkpointEvents: this.checkpointEvents.map(cp => ({
+            checkpoint_index: cp.checkpointIndex,
+            reached_at_seconds: parseFloat(cp.reachedAtSeconds.toFixed(2)),
+            deaths_so_far: cp.deathsSoFar,
+          }))
         })
       })
     }

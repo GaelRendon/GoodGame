@@ -1,6 +1,7 @@
 """
-main.py — FastAPI application entry point.
+main.py — FastAPI application entry point for Good Game.
 Configures CORS, includes routes, and creates database tables on startup.
+Tables are created if they don't exist (never dropped).
 """
 
 from fastapi import FastAPI
@@ -8,12 +9,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from database import engine, Base
+# Import all models so they are registered with Base.metadata
+import models  # noqa: F401
 from routes import router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create database tables on startup."""
+    """Create database tables on startup (if they don't exist)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
@@ -21,9 +24,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Trap Runner API",
-    description="Backend API for the Trap Runner platformer game. Stores player statistics and leaderboard data.",
-    version="1.0.0",
+    title="Good Game API",
+    description="Backend API for the Good Game platformer. Stores player data, game analytics, and sentiment surveys.",
+    version="2.0.0",
     lifespan=lifespan
 )
 
@@ -43,4 +46,4 @@ app.include_router(router, prefix="/api")
 @app.get("/")
 async def root():
     """Health check endpoint."""
-    return {"status": "ok", "game": "Trap Runner", "version": "1.0.0"}
+    return {"status": "ok", "game": "Good Game", "version": "2.0.0"}
