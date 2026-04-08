@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 
 /**
- * Instructions — Controls guide and gameplay tips.
+ * Instructions — Controls guide and gameplay tips for Good Game.
  */
 function Instructions() {
   const navigate = useNavigate()
@@ -15,6 +15,7 @@ function Instructions() {
         <ul>
           <li><span className="key-badge">←</span> <span className="key-badge">→</span> or <span className="key-badge">A</span> <span className="key-badge">D</span> — Move left / right</li>
           <li><span className="key-badge">↑</span> or <span className="key-badge">W</span> or <span className="key-badge">SPACE</span> — Jump</li>
+          <li><span className="key-badge">ESC</span> — Pause</li>
         </ul>
 
         <h3>⚠️ Gameplay</h3>
@@ -28,8 +29,9 @@ function Instructions() {
         <h3>📊 Scoring</h3>
         <ul>
           <li>Base score for completing a level: 1000 points</li>
-          <li>Each death: -50 points</li>
+          <li>Each death: −25 points</li>
           <li>Time bonus: faster completion = more points</li>
+          <li>⚠️ If your score hits 0, it resets — your time bonus restarts!</li>
         </ul>
 
         <button

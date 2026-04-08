@@ -5,8 +5,8 @@
  * only when the previous level is completed.
  */
 
-const STORAGE_KEY = 'traprunner_progress'
-const MAX_LEVEL = 3
+const STORAGE_KEY = 'goodgame_progress'
+const MAX_LEVEL = 7
 
 /**
  * Get the highest unlocked level (1-based).
@@ -44,9 +44,7 @@ export function completeLevel(completedLevel) {
   if (next > current && next <= MAX_LEVEL) {
     try {
       localStorage.setItem(STORAGE_KEY, next.toString())
-    } catch (e) {
-      // localStorage not available
-    }
+    } catch (e) {}
   }
   // If completing the last level, ensure it's marked
   if (completedLevel >= MAX_LEVEL && current < MAX_LEVEL) {
@@ -63,6 +61,14 @@ export function completeLevel(completedLevel) {
  */
 export function hasNextLevel(currentLevel) {
   return currentLevel < MAX_LEVEL
+}
+
+/**
+ * Get the max level number.
+ * @returns {number}
+ */
+export function getMaxLevel() {
+  return MAX_LEVEL
 }
 
 /**

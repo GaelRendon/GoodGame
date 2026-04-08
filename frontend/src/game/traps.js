@@ -1,34 +1,62 @@
 /**
- * traps.js — Trap factory functions for the Phaser game scene.
+ * traps.js — Trap factory functions for the Good Game Phaser scene.
  *
  * Each trap type creates game objects and defines their activation behavior.
  * Traps are invisible until triggered, then animate to surprise the player.
  */
 
 /**
- * Creates a fake floor — a platform that looks normal but collapses on contact.
+ * Theme color lookup for fake floors to match ground platforms exactly.
+ */
+const THEME_GROUND_COLORS = {
+  blue:   { fill: 0x3a3a5e, grass: 0x4caf50, grid: 0x2a2a4e },
+  green:  { fill: 0x3a4a3a, grass: 0x66bb6a, grid: 0x2a3a2a },
+  red:    { fill: 0x4a2a2a, grass: 0xf44336, grid: 0x3a1a1a },
+  purple: { fill: 0x3a2a4e, grass: 0xab47bc, grid: 0x2a1a3e },
+}
+
+/**
+ * Creates a fake floor — looks like ground but collapses when stepped on.
+ * Height is 40px to match real ground segments.
+ * Styled identically to ground with grass stripe + grid texture.
+ *
  * @param {Phaser.Scene} scene
  * @param {Object} trapDef — { x, y, width, delay }
- * @param {Phaser.GameObjects.Group} platforms — the platform group to add to
+ * @param {string} theme — color theme key
  * @returns {Object} trap controller
  */
-export function createFakeFloor(scene, trapDef) {
+export function createFakeFloor(scene, trapDef, theme = 'blue') {
   const { x, y, width, delay = 150 } = trapDef
-  const height = 20
+  const height = 40 // Match ground segments
 
-  // Draw a fake floor that looks like a regular platform
+  const colors = THEME_GROUND_COLORS[theme] || THEME_GROUND_COLORS.blue
+
+  // Draw fake floor IDENTICALLY to ground platforms
   const graphics = scene.add.graphics()
-  graphics.fillStyle(0x4a4a6a, 1)
+
+  // Main fill
+  graphics.fillStyle(colors.fill, 1)
   graphics.fillRect(0, 0, width, height)
-  graphics.lineStyle(1, 0x5a5a8a)
-  graphics.strokeRect(0, 0, width, height)
+
+  // Top grass stripe (same as ground)
+  graphics.fillStyle(colors.grass, 1)
+  graphics.fillRect(0, 0, width, 6)
+
+  // Grid texture (same as ground)
+  graphics.lineStyle(1, colors.grid, 0.5)
+  for (let gx = 0; gx < width; gx += 20) {
+    graphics.lineBetween(gx, 6, gx, height)
+  }
+  for (let gy = 6; gy < height; gy += 10) {
+    graphics.lineBetween(0, gy, width, gy)
+  }
 
   // Create texture from graphics
   const key = `fakeFloor_${x}_${y}`
   graphics.generateTexture(key, width, height)
   graphics.destroy()
 
-  // Create as a static physics body (looks like part of the ground)
+  // Create as a static physics body (looks like ground)
   const body = scene.physics.add.staticImage(x + width / 2, y + height / 2, key)
   body.setDisplaySize(width, height)
   body.refreshBody()
@@ -63,14 +91,15 @@ export function createFakeFloor(scene, trapDef) {
     },
     reset() {
       triggered = false
-      body.enableBody(true, body.x, trapDef.y + height / 2, true, true)
+      body.enableBody(true, x + width / 2, trapDef.y + height / 2, true, true)
       body.setAlpha(1)
+      body.refreshBody()
     }
   }
 }
 
 /**
- * Creates a falling block — a block that drops from above when player passes a trigger point.
+ * Creates a falling block — drops from above when player passes a trigger point.
  * @param {Phaser.Scene} scene
  * @param {Object} trapDef — { x, y, width, height, triggerX }
  * @returns {Object} trap controller
@@ -92,12 +121,11 @@ export function createFallingBlock(scene, trapDef) {
   graphics.generateTexture(key, width, height)
   graphics.destroy()
 
-  // Create as a dynamic body but initially static (hidden above screen)
   const body = scene.physics.add.image(x + width / 2, y + height / 2, key)
   body.setDisplaySize(width, height)
   body.setImmovable(true)
   body.body.allowGravity = false
-  body.setAlpha(0) // Hidden initially
+  body.setAlpha(0)
   body.trapType = 'fallingBlock'
 
   let triggered = false
@@ -106,9 +134,6 @@ export function createFallingBlock(scene, trapDef) {
     body,
     type: 'fallingBlock',
     triggerX,
-    /**
-     * Check if player has crossed the trigger X position.
-     */
     checkTrigger(playerX) {
       if (triggered) return
       if (playerX >= triggerX && playerX <= triggerX + 80) {
@@ -124,7 +149,6 @@ export function createFallingBlock(scene, trapDef) {
       body.body.allowGravity = true
       body.body.setGravityY(600)
 
-      // Destroy after falling
       scene.time.delayedCall(3000, () => {
         body.disableBody(true, true)
       })
@@ -152,7 +176,6 @@ export function createSurpriseSpike(scene, trapDef) {
   const width = 24
   const height = 30
 
-  // Draw spike triangle
   const graphics = scene.add.graphics()
   graphics.fillStyle(0xff3333, 1)
   graphics.beginPath()
@@ -166,12 +189,11 @@ export function createSurpriseSpike(scene, trapDef) {
   graphics.generateTexture(key, width, height)
   graphics.destroy()
 
-  // Physics body — sensor (overlaps but no collision push)
   const body = scene.physics.add.image(x + width / 2, y + height, key)
   body.setDisplaySize(width, height)
   body.body.allowGravity = false
   body.setImmovable(true)
-  body.setAlpha(0) // Hidden underground
+  body.setAlpha(0)
   body.trapType = 'surpriseSpike'
   body.isDeadly = true
 
@@ -192,7 +214,6 @@ export function createSurpriseSpike(scene, trapDef) {
       triggered = true
 
       body.setAlpha(1)
-      // Pop up animation
       scene.tweens.add({
         targets: body,
         y: y - 5,
@@ -219,11 +240,9 @@ export function createSpringLauncher(scene, trapDef) {
   const width = 30
   const height = 15
 
-  // Draw spring
   const graphics = scene.add.graphics()
   graphics.fillStyle(0x44ff44, 1)
   graphics.fillRect(0, 0, width, height)
-  // Spring coil lines
   graphics.lineStyle(2, 0x22aa22)
   for (let i = 5; i < width; i += 8) {
     graphics.lineBetween(i, 0, i, height)
@@ -237,7 +256,7 @@ export function createSpringLauncher(scene, trapDef) {
   body.setDisplaySize(width, height)
   body.body.allowGravity = false
   body.setImmovable(true)
-  body.setAlpha(0) // Hidden
+  body.setAlpha(0)
   body.trapType = 'springLauncher'
 
   let triggered = false
@@ -257,7 +276,6 @@ export function createSpringLauncher(scene, trapDef) {
       triggered = true
 
       body.setAlpha(1)
-      // Animate spring expanding
       scene.tweens.add({
         targets: body,
         scaleY: 2,
@@ -266,9 +284,6 @@ export function createSpringLauncher(scene, trapDef) {
         ease: 'Bounce'
       })
     },
-    /**
-     * Apply launch force to player
-     */
     launchPlayer(player) {
       player.setVelocityY(-700)
     },
@@ -282,7 +297,6 @@ export function createSpringLauncher(scene, trapDef) {
 
 /**
  * Creates a falling ceiling — drops from above when player walks under.
- * Similar to fallingBlock but wider and from the ceiling.
  * @param {Phaser.Scene} scene
  * @param {Object} trapDef — { x, y, width, height, triggerX }
  * @returns {Object} trap controller
@@ -290,11 +304,9 @@ export function createSpringLauncher(scene, trapDef) {
 export function createFallingCeiling(scene, trapDef) {
   const { x, y, width, height, triggerX } = trapDef
 
-  // Draw ceiling block with warning stripes
   const graphics = scene.add.graphics()
   graphics.fillStyle(0x666688, 1)
   graphics.fillRect(0, 0, width, height)
-  // Warning stripes
   graphics.fillStyle(0xffaa00, 0.6)
   for (let i = 0; i < width; i += 20) {
     graphics.fillRect(i, height - 8, 10, 8)
@@ -308,7 +320,7 @@ export function createFallingCeiling(scene, trapDef) {
   body.setDisplaySize(width, height)
   body.setImmovable(true)
   body.body.allowGravity = false
-  body.setAlpha(0) // Hidden
+  body.setAlpha(0)
   body.trapType = 'fallingCeiling'
   body.isDeadly = true
 
@@ -347,10 +359,13 @@ export function createFallingCeiling(scene, trapDef) {
 
 /**
  * Factory: create a trap by type string.
+ * @param {Phaser.Scene} scene
+ * @param {Object} trapDef
+ * @param {string} theme — level color theme
  */
-export function createTrap(scene, trapDef) {
+export function createTrap(scene, trapDef, theme = 'blue') {
   switch (trapDef.type) {
-    case 'fakeFloor': return createFakeFloor(scene, trapDef)
+    case 'fakeFloor': return createFakeFloor(scene, trapDef, theme)
     case 'fallingBlock': return createFallingBlock(scene, trapDef)
     case 'surpriseSpike': return createSurpriseSpike(scene, trapDef)
     case 'springLauncher': return createSpringLauncher(scene, trapDef)
