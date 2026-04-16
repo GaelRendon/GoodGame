@@ -75,18 +75,19 @@ jobs:
     needs: build-frontend
 
     steps:
-      - name: Download frontend artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-app
-
-      - name: Deploy frontend to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'goodgame'
-          package: .
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_EA49EAAB5446432F820756D19AA66FEC }}
-
+          - name: Download frontend artifact
+            uses: actions/download-artifact@v4
+            with:
+              name: frontend-app
+              path: ./frontend_release  # Descarga en una carpeta específica
+    
+          - name: Deploy frontend to Azure Web App
+            uses: azure/webapps-deploy@v3
+            with:
+              app-name: 'goodgame'
+              package: ./frontend_release  # Despliega el contenido de esa carpeta
+              publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_EA49EAAB5446432F820756D19AA66FEC }}
+  
   # ──────────────────────────────────────────────
   # 4. Deploy backend to Azure Web App
   # ──────────────────────────────────────────────
@@ -95,14 +96,15 @@ jobs:
     needs: build-backend
 
     steps:
-      - name: Download backend artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: backend-app
-
-      - name: Deploy backend to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: 'goodgame-api'
-          package: .
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_BACKEND }}
+          - name: Download backend artifact
+            uses: actions/download-artifact@v4
+            with:
+              name: backend-app
+              path: ./backend_release
+    
+          - name: Deploy backend to Azure Web App
+            uses: azure/webapps-deploy@v3
+            with:
+              app-name: 'goodgame-api'
+              package: ./backend_release
+              publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_BACKEND }}
