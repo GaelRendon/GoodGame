@@ -84,7 +84,6 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'goodgame'
-          slot-name: 'Production'
           package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_EA49EAAB5446432F820756D19AA66FEC }}
 
@@ -105,6 +104,5 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'goodgame-api'
-          slot-name: 'Production'
           package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_BACKEND }}
