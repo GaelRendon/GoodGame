@@ -30,10 +30,19 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS — allow frontend dev server
+# CORS — allow frontend dev server and Azure production
+import os
+_extra_origins = os.getenv("CORS_ORIGINS", "").split(",")
+_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "https://goodgame.azurewebsites.net",
+] + [o.strip() for o in _extra_origins if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173"],
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
