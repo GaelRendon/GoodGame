@@ -86,12 +86,16 @@ jobs:
             with:
               name: frontend-app
               path: ./frontend_release
+              
+          - name: Zip frontend artifact
+            working-directory: ./frontend_release
+            run: zip -r ../frontend.zip .
       
           - name: Deploy frontend to Azure Web App
             uses: azure/webapps-deploy@v3
             with:
               app-name: 'goodgame'
-              package: ./frontend_release
+              package: ./frontend.zip
               publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_EA49EAAB5446432F820756D19AA66FEC }}
 
   # ──────────────────────────────────────────────
@@ -109,10 +113,14 @@ jobs:
             with:
               name: backend-app
               path: ./backend_release
+
+          - name: Zip backend artifact
+            working-directory: ./backend_release
+            run: zip -r ../backend.zip .
       
           - name: Deploy backend to Azure Web App
             uses: azure/webapps-deploy@v3
             with:
               app-name: 'goodgame-api'
-              package: ./backend_release
+              package: ./backend.zip
               publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_BACKEND }}
