@@ -73,35 +73,39 @@ jobs:
   deploy-frontend:
     runs-on: ubuntu-latest
     needs: build-frontend
-
+  
     steps:
+          - uses: actions/checkout@v4  # ADD THIS LINE
+      
           - name: Download frontend artifact
             uses: actions/download-artifact@v4
             with:
               name: frontend-app
-              path: ./frontend_release  # Descarga en una carpeta específica
-    
+              path: ./frontend_release
+      
           - name: Deploy frontend to Azure Web App
             uses: azure/webapps-deploy@v3
             with:
               app-name: 'goodgame'
-              package: ./frontend_release  # Despliega el contenido de esa carpeta
+              package: ./frontend_release
               publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_EA49EAAB5446432F820756D19AA66FEC }}
-  
+
   # ──────────────────────────────────────────────
   # 4. Deploy backend to Azure Web App
   # ──────────────────────────────────────────────
   deploy-backend:
     runs-on: ubuntu-latest
     needs: build-backend
-
+  
     steps:
+          - uses: actions/checkout@v4  # ADD THIS LINE
+      
           - name: Download backend artifact
             uses: actions/download-artifact@v4
             with:
               name: backend-app
               path: ./backend_release
-    
+      
           - name: Deploy backend to Azure Web App
             uses: azure/webapps-deploy@v3
             with:
