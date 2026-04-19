@@ -38,6 +38,7 @@ _origins = [
     "http://localhost:3000",
     "http://127.0.0.1:5173",
     "https://goodgame.azurewebsites.net",
+    "https://goodgame-facygha7e5gzg0hm.westus3-01.azurewebsites.net",
 ] + [o.strip() for o in _extra_origins if o.strip()]
 
 app.add_middleware(

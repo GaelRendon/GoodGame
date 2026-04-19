@@ -29,7 +29,7 @@ jobs:
       - name: Install and build frontend
         working-directory: ./frontend
         env:
-          VITE_API_URL: https://goodgame-api.azurewebsites.net
+          VITE_API_URL: https://goodgame-api-aqh5bqf5a3g0hchh.westus3-01.azurewebsites.net
         run: |
           npm install
           npm run build --if-present
@@ -94,7 +94,7 @@ jobs:
           - name: Deploy frontend to Azure Web App
             uses: azure/webapps-deploy@v3
             with:
-              app-name: 'goodgame'
+              app-name: 'goodgame-facygha7e5gzg0hm'
               package: ./frontend.zip
               publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_EA49EAAB5446432F820756D19AA66FEC }}
 
@@ -121,6 +121,6 @@ jobs:
           - name: Deploy backend to Azure Web App
             uses: azure/webapps-deploy@v3
             with:
-              app-name: 'goodgame-api'
+              app-name: 'goodgame-api-aqh5bqf5a3g0hchh'
               package: ./backend.zip
               publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_BACKEND }}
