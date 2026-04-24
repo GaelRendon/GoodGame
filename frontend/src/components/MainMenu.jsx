@@ -132,13 +132,13 @@ function MainMenu() {
           📖 Instructions
         </button>
 
-        <button
+        {/* <button
           id="btn-clear-data"
           className="btn btn-secondary btn-sm clear-data-btn"
           onClick={handleClearData}
         >
           🗑️ Clear Data
-        </button>
+        </button> */}
       </div>
 
       <p className="menu-footer">
