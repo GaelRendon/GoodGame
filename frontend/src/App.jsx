@@ -4,10 +4,11 @@ import Instructions from './components/Instructions'
 import LevelSelect from './components/LevelSelect'
 import GameContainer from './components/GameContainer'
 import VictoryScreen from './components/VictoryScreen'
+import PlayerAnalytics from './components/PlayerAnalytics'
 
 /**
  * App — Root component with routing.
- * Routes: / (menu), /instructions, /levels, /game/:levelId, /victory
+ * Routes: / (menu), /instructions, /levels, /game/:levelId, /victory, /analytics
  */
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Route path="/levels" element={<LevelSelect />} />
         <Route path="/game/:levelId" element={<GameContainer />} />
         <Route path="/victory" element={<VictoryScreen />} />
+        <Route path="/analytics" element={<PlayerAnalytics />} />
       </Routes>
     </div>
   )

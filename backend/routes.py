@@ -15,7 +15,7 @@ Endpoints:
 
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, func, desc, Integer, case, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -30,6 +30,14 @@ from schemas import (
     LeaderboardEntry,
     AnalyticsSummary,
     CheckpointEventCreate,
+    DashboardResponse,
+    PlayerMetricsEntry,
+    LevelAnalysisEntry,
+    LevelFunnelEntry,
+    PlayerSegmentSummary,
+    DifficultySentimentEntry,
+    CheckpointAnalysisEntry,
+    SpeedLeaderboardEntry,
 )
 
 router = APIRouter()
@@ -254,6 +262,203 @@ async def get_analytics(db: AsyncSession = Depends(get_db)):
         average_score=round(float(row.average_score), 2),
         average_time=round(float(row.average_time), 2),
         most_played_level=most_played_row.level if most_played_row else None,
+    )
+
+
+# ==========================================
+# GET /api/stats/dashboard — Full analytics dashboard
+# ==========================================
+@router.get("/stats/dashboard", response_model=DashboardResponse)
+async def get_dashboard(db: AsyncSession = Depends(get_db)):
+    """Get comprehensive analytics dashboard data.
+    Replicates Gold-layer transformations from the ETL pipeline,
+    computed live against PostgreSQL.
+    """
+
+    # --- Summary counts ---
+    summary = await db.execute(
+        select(
+            func.count(func.distinct(Player.id)).label("total_players"),
+            func.count(GameSession.id).label("total_sessions"),
+            func.coalesce(func.sum(GameSession.deaths), 0).label("total_deaths"),
+            func.coalesce(func.avg(GameSession.score), 0).label("average_score"),
+        ).outerjoin(GameSession, Player.id == GameSession.player_id)
+    )
+    summary_row = summary.one()
+
+    # --- Player Metrics (GOLD_PLAYER_METRICS + GOLD_PLAYER_SEGMENTS) ---
+    pm_query = await db.execute(
+        select(
+            Player.display_name,
+            func.count(GameSession.id).label("total_sessions"),
+            func.max(GameSession.level).label("max_level"),
+            func.avg(GameSession.deaths).label("avg_deaths"),
+            func.sum(GameSession.time_seconds).label("total_playtime"),
+        )
+        .join(GameSession, Player.id == GameSession.player_id)
+        .group_by(Player.id, Player.display_name)
+        .order_by(desc(func.sum(GameSession.time_seconds)))
+    )
+    player_metrics = []
+    for row in pm_query.all():
+        sessions = row.total_sessions
+        if sessions >= 10:
+            segment = "Hardcore"
+        elif sessions >= 3:
+            segment = "Regular"
+        else:
+            segment = "Casual"
+        player_metrics.append(PlayerMetricsEntry(
+            display_name=row.display_name,
+            total_sessions=sessions,
+            max_level=row.max_level or 1,
+            avg_deaths=round(float(row.avg_deaths or 0), 2),
+            total_playtime=round(float(row.total_playtime or 0), 1),
+            player_type=segment,
+        ))
+
+    # --- Level Analysis (GOLD_LEVEL_ANALYSIS) ---
+    la_query = await db.execute(
+        select(
+            GameSession.level,
+            func.count(GameSession.id).label("total_attempts"),
+            (func.sum(func.cast(GameSession.completed, Integer)) * 100.0 / func.count(GameSession.id)).label("completion_rate"),
+            func.avg(GameSession.deaths).label("avg_deaths"),
+            func.avg(GameSession.time_seconds).label("avg_time"),
+        )
+        .group_by(GameSession.level)
+        .order_by(GameSession.level)
+    )
+    level_analysis = [
+        LevelAnalysisEntry(
+            level=row.level,
+            total_attempts=row.total_attempts,
+            completion_rate=round(float(row.completion_rate or 0), 1),
+            avg_deaths=round(float(row.avg_deaths or 0), 2),
+            avg_time=round(float(row.avg_time or 0), 1),
+        )
+        for row in la_query.all()
+    ]
+
+    # --- Level Funnel (GOLD_LEVEL_FUNNEL) ---
+    funnel_query = await db.execute(
+        select(
+            GameSession.level,
+            func.count(func.distinct(GameSession.player_id)).label("unique_players"),
+        )
+        .group_by(GameSession.level)
+        .order_by(GameSession.level)
+    )
+    funnel_rows = funnel_query.all()
+    max_players = funnel_rows[0].unique_players if funnel_rows else 1
+    level_funnel = [
+        LevelFunnelEntry(
+            level=row.level,
+            unique_players=row.unique_players,
+            retention_rate_pct=round((row.unique_players / max_players) * 100, 1) if max_players > 0 else 0,
+        )
+        for row in funnel_rows
+    ]
+
+    # --- Player Segments (GOLD_PLAYER_SEGMENTS) ---
+    segment_counts = {"Hardcore": 0, "Regular": 0, "Casual": 0}
+    for pm in player_metrics:
+        segment_counts[pm.player_type] += 1
+    player_segments = [
+        PlayerSegmentSummary(segment=seg, player_count=cnt)
+        for seg, cnt in segment_counts.items()
+    ]
+
+    # --- Difficulty-Sentiment Correlation (GOLD_DIFFICULTY_SENTIMENT_CORRELATION) ---
+    ds_query = await db.execute(
+        select(
+            GameSession.level,
+            case(
+                (GameSession.deaths <= 3, "Low (0-3)"),
+                (GameSession.deaths <= 10, "Medium (4-10)"),
+                else_="High (11+)",
+            ).label("death_tier"),
+            func.avg(SentimentResponse.emoji_mood).label("avg_sentiment"),
+            func.count(SentimentResponse.id).label("session_count"),
+        )
+        .join(SentimentResponse, GameSession.id == SentimentResponse.session_id)
+        .where(SentimentResponse.skipped == False)
+        .group_by(GameSession.level, "death_tier")
+        .order_by(GameSession.level)
+    )
+    difficulty_sentiment = [
+        DifficultySentimentEntry(
+            level=row.level,
+            death_tier=row.death_tier,
+            avg_sentiment=round(float(row.avg_sentiment or 0), 2),
+            session_count=row.session_count,
+        )
+        for row in ds_query.all()
+    ]
+
+    # --- Checkpoint Analysis (GOLD_CHECKPOINT_ANALYSIS) ---
+    cp_query = await db.execute(
+        select(
+            GameSession.level,
+            CheckpointEvent.checkpoint_index,
+            func.count(CheckpointEvent.id).label("times_reached"),
+            func.avg(CheckpointEvent.reached_at_seconds).label("avg_time_to_reach"),
+            func.avg(CheckpointEvent.deaths_so_far).label("avg_deaths_at_checkpoint"),
+        )
+        .join(GameSession, CheckpointEvent.session_id == GameSession.id)
+        .group_by(GameSession.level, CheckpointEvent.checkpoint_index)
+        .order_by(GameSession.level, CheckpointEvent.checkpoint_index)
+    )
+    checkpoint_analysis = [
+        CheckpointAnalysisEntry(
+            level=row.level,
+            checkpoint_index=row.checkpoint_index,
+            times_reached=row.times_reached,
+            avg_time_to_reach=round(float(row.avg_time_to_reach or 0), 1),
+            avg_deaths_at_checkpoint=round(float(row.avg_deaths_at_checkpoint or 0), 1),
+        )
+        for row in cp_query.all()
+    ]
+
+    # --- Speed Leaderboard (fastest completion times per level) ---
+    speed_query = await db.execute(
+        select(
+            Player.display_name.label("player_name"),
+            GameSession.level,
+            func.min(GameSession.time_seconds).label("time_seconds"),
+            func.min(GameSession.deaths).label("deaths"),
+            func.max(GameSession.score).label("score"),
+            func.max(GameSession.created_at).label("created_at"),
+        )
+        .join(Player, GameSession.player_id == Player.id)
+        .where(GameSession.completed == True)
+        .group_by(GameSession.level, Player.id, Player.display_name)
+        .order_by(GameSession.level.asc(), asc(func.min(GameSession.time_seconds)))
+    )
+    speed_leaderboard = [
+        SpeedLeaderboardEntry(
+            player_name=row.player_name,
+            level=row.level,
+            time_seconds=round(float(row.time_seconds), 1),
+            deaths=row.deaths,
+            score=row.score,
+            created_at=row.created_at,
+        )
+        for row in speed_query.all()
+    ]
+
+    return DashboardResponse(
+        total_players=summary_row.total_players,
+        total_sessions=summary_row.total_sessions,
+        total_deaths=summary_row.total_deaths,
+        average_score=round(float(summary_row.average_score), 2),
+        player_metrics=player_metrics,
+        level_analysis=level_analysis,
+        level_funnel=level_funnel,
+        player_segments=player_segments,
+        difficulty_sentiment=difficulty_sentiment,
+        checkpoint_analysis=checkpoint_analysis,
+        speed_leaderboard=speed_leaderboard,
     )
 
 
