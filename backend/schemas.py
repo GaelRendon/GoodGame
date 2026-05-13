@@ -138,3 +138,81 @@ class AnalyticsSummary(BaseModel):
     average_score: float
     average_time: float
     most_played_level: Optional[int] = None
+
+
+# ==========================================
+# Dashboard Analytics schemas
+# ==========================================
+
+class PlayerMetricsEntry(BaseModel):
+    """Per-player aggregate metrics (Gold: GOLD_PLAYER_METRICS)."""
+    display_name: str
+    total_sessions: int
+    max_level: int
+    avg_deaths: float
+    total_playtime: float
+    player_type: str  # Hardcore / Regular / Casual
+
+
+class LevelAnalysisEntry(BaseModel):
+    """Per-level difficulty stats (Gold: GOLD_LEVEL_ANALYSIS)."""
+    level: int
+    total_attempts: int
+    completion_rate: float
+    avg_deaths: float
+    avg_time: float
+
+
+class LevelFunnelEntry(BaseModel):
+    """Retention funnel per level (Gold: GOLD_LEVEL_FUNNEL)."""
+    level: int
+    unique_players: int
+    retention_rate_pct: float
+
+
+class PlayerSegmentSummary(BaseModel):
+    """Player segment counts (Gold: GOLD_PLAYER_SEGMENTS)."""
+    segment: str
+    player_count: int
+
+
+class DifficultySentimentEntry(BaseModel):
+    """Sentiment by level and death tier (Gold: GOLD_DIFFICULTY_SENTIMENT_CORRELATION)."""
+    level: int
+    death_tier: str
+    avg_sentiment: float
+    session_count: int
+
+
+class CheckpointAnalysisEntry(BaseModel):
+    """Checkpoint reach frequency per level (Gold: GOLD_CHECKPOINT_ANALYSIS)."""
+    level: int
+    checkpoint_index: int
+    times_reached: int
+    avg_time_to_reach: float
+    avg_deaths_at_checkpoint: float
+
+
+class SpeedLeaderboardEntry(BaseModel):
+    """Top players by fastest completion time per level."""
+    player_name: str
+    level: int
+    time_seconds: float
+    deaths: int
+    score: int
+    created_at: datetime
+
+
+class DashboardResponse(BaseModel):
+    """Single wrapper containing all analytics data for the dashboard."""
+    total_players: int
+    total_sessions: int
+    total_deaths: int
+    average_score: float
+    player_metrics: List[PlayerMetricsEntry]
+    level_analysis: List[LevelAnalysisEntry]
+    level_funnel: List[LevelFunnelEntry]
+    player_segments: List[PlayerSegmentSummary]
+    difficulty_sentiment: List[DifficultySentimentEntry]
+    checkpoint_analysis: List[CheckpointAnalysisEntry]
+    speed_leaderboard: List[SpeedLeaderboardEntry]

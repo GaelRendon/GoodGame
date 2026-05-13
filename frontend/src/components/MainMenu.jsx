@@ -132,6 +132,14 @@ function MainMenu() {
           📖 Instructions
         </button>
 
+        <button
+          id="btn-analytics"
+          className="btn btn-secondary btn-lg"
+          onClick={() => navigate('/analytics')}
+        >
+          📊 Analytics
+        </button>
+
         {/* <button
           id="btn-clear-data"
           className="btn btn-secondary btn-sm clear-data-btn"

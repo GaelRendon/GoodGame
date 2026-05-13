@@ -86,4 +86,36 @@ export async function getLeaderboard(limit = 10) {
   }
 }
 
+/**
+ * Fetch comprehensive analytics dashboard data.
+ * Returns all analytics (player metrics, level analysis, funnel, segments, sentiment).
+ */
+export async function getDashboardAnalytics() {
+  try {
+    const response = await api.get('/api/stats/dashboard')
+    return response.data
+  } catch (error) {
+    console.error('Failed to fetch dashboard analytics:', error)
+    return null
+  }
+}
+/**
+ * Fetch a player's game session history by UUID.
+ * @param {string} uuid — player UUID
+ * @param {number} limit — max sessions to return
+ * @returns {Array} list of game session objects
+ */
+export async function getPlayerStats(uuid, limit = 100) {
+  try {
+    const response = await api.get(`/api/players/${uuid}/stats?limit=${limit}`)
+    return response.data
+  } catch (error) {
+    if (error.response && error.response.status === 404) {
+      return []
+    }
+    console.error('Failed to fetch player stats:', error)
+    return []
+  }
+}
+
 export default api

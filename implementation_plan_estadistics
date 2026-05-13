@@ -1,0 +1,110 @@
+# Player Analytics Dashboard
+
+Add a new **"Player Analytics"** page to the GoodGame frontend that displays the same analytics defined in `gold_transformations.py` from the ETL project, computed live from PostgreSQL via new backend API endpoints.
+
+## Context
+
+The `gold_transformations.py` defines 7 Gold-layer analytics in Snowflake:
+
+| # | Gold Table | What it shows |
+|---|-----------|---------------|
+| 1 | `GOLD_SENTIMENT_PERFORMANCE` | Session data joined with sentiment scores |
+| 2 | `GOLD_PLAYER_METRICS` | Per-player aggregates (sessions, max level, avg deaths, playtime) |
+| 3 | `GOLD_LEVEL_ANALYSIS` | Per-level difficulty stats (completion rate, avg deaths, avg time) |
+| 4 | `GOLD_LEVEL_FUNNEL` | Retention funnel — how many players reach each level |
+| 5 | `GOLD_PLAYER_SEGMENTS` | Player segmentation (Hardcore / Regular / Casual) |
+| 6 | `GOLD_DIFFICULTY_SENTIMENT_CORRELATION` | Sentiment score by level and death tier |
+| 7 | `GOLD_CHECKPOINT_ANALYSIS` | How often each checkpoint is reached per level |
+
+Since the frontend already talks to FastAPI (PostgreSQL), we'll replicate these analytics as **live API endpoints** rather than connecting to Snowflake.
+
+### Current State of the Code
+
+- **MainMenu.jsx**: Has 3 active buttons (Start Game, Levels, Instructions). The Clear Data button is **commented out** (lines 135-141). The `handleClearData` function and related state (`showClearMsg`) still exist in the code but are unused.
+- **App.jsx**: Routes: `/` (menu), `/instructions`, `/levels`, `/game/:levelId`, `/victory`
+- **Backend routes.py**: Already has `GET /api/stats/analytics` (basic summary) and `GET /api/stats/leaderboard`
+
+## Proposed Changes
+
+### Backend — New Analytics Endpoint
+
+#### [MODIFY] [schemas.py](file:///c:/Users/grenm/OneDrive/Documentos/GoodGame/backend/schemas.py)
+
+Add new Pydantic response schemas:
+- `PlayerMetricsEntry` — display_name, total_sessions, max_level, avg_deaths, total_playtime, player_type
+- `LevelAnalysisEntry` — level, total_attempts, completion_rate, avg_deaths, avg_time
+- `LevelFunnelEntry` — level, unique_players, retention_rate_pct
+- `PlayerSegmentSummary` — segment name, player count
+- `DifficultySentimentEntry` — level, death_tier, avg_sentiment, session_count
+- `DashboardResponse` — single wrapper containing all of the above
+
+#### [MODIFY] [routes.py](file:///c:/Users/grenm/OneDrive/Documentos/GoodGame/backend/routes.py)
+
+Add one comprehensive endpoint:
+- `GET /api/stats/dashboard` — Returns all analytics data in a single response
+
+This replicates the same SQL logic from `gold_transformations.py` but runs against PostgreSQL using SQLAlchemy. Avoids the frontend making 5+ separate API calls.
+
+---
+
+### Frontend — New Route & Component
+
+#### [MODIFY] [api.js](file:///c:/Users/grenm/OneDrive/Documentos/GoodGame/frontend/src/api.js)
+
+Add:
+- `getDashboardAnalytics()` — calls `GET /api/stats/dashboard`
+
+#### [NEW] [PlayerAnalytics.jsx](file:///c:/Users/grenm/OneDrive/Documentos/GoodGame/frontend/src/components/PlayerAnalytics.jsx)
+
+Full-page analytics dashboard with these sections:
+1. **Summary Cards** — Total players, total sessions, total deaths, avg score (animated counters)
+2. **Player Leaderboard** — Table of top players: sessions, max level, avg deaths, playtime, segment badge
+3. **Level Difficulty** — Visual bars per level: completion rate, avg deaths, avg time
+4. **Retention Funnel** — Visual funnel showing player drop-off across levels
+5. **Player Segments** — Donut/ring-style display of Hardcore vs Regular vs Casual
+6. **Sentiment by Difficulty** — Grouped display showing avg sentiment by death tier per level
+
+Design:
+- Dark/neon/glassmorphism theme (matching existing design tokens)
+- Scrollable layout (unlike the fixed game screens)
+- Smooth entrance animations per section
+- Loading skeleton + graceful empty states
+- Back button to return to menu
+
+#### [MODIFY] [App.jsx](file:///c:/Users/grenm/OneDrive/Documentos/GoodGame/frontend/src/App.jsx)
+
+Add route: `/analytics` → `<PlayerAnalytics />`
+
+#### [MODIFY] [MainMenu.jsx](file:///c:/Users/grenm/OneDrive/Documentos/GoodGame/frontend/src/components/MainMenu.jsx)
+
+Add a new **"📊 Analytics"** button after "📖 Instructions" (where the commented-out Clear Data button was). The Analytics button will use `btn-secondary btn-lg` styling to match the other buttons.
+
+#### [MODIFY] [index.css](file:///c:/Users/grenm/OneDrive/Documentos/GoodGame/frontend/src/index.css)
+
+Add CSS for the analytics dashboard:
+- `.analytics-screen` — scrollable full-page container (overrides the `overflow: hidden` from `#root`)
+- `.analytics-header` — title and back button
+- `.summary-cards` — grid of animated stat cards with counters
+- `.analytics-section` — glass-panel sections for each chart area
+- `.data-table` — styled table for player metrics
+- `.bar-chart` / `.funnel-chart` — CSS-only chart visualizations (no external library)
+- `.segment-badges` — colored badges for player types (Hardcore/Regular/Casual)
+- `@keyframes analyticsSlideIn` — staggered entrance animations
+
+## Open Questions
+
+> [!IMPORTANT]
+> **Checkpoint analysis (#7)**: The checkpoint analytics require joining checkpoint_events with game_sessions. Should I include this in the dashboard? It adds a "Checkpoints Reached" section per level. I'll include it unless you say otherwise.
+
+> [!NOTE]
+> **Charts**: I'll build all visualizations with pure CSS (animated bars, progress rings, funnel shapes) — zero extra dependencies. If you'd prefer a charting library like Chart.js or Recharts, let me know.
+
+## Verification Plan
+
+### Automated Tests
+- Start the backend (`uvicorn main:app`) and test `GET /api/stats/dashboard` returns valid JSON
+- Start the frontend (`npm run dev`) and verify `/analytics` renders
+
+### Manual Verification
+- Navigate MainMenu → Analytics → verify dashboard loads with data or empty states
+- Browser recording of the full navigation flow
